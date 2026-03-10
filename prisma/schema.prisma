@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Gamification
+  xp            Int       @default(0)
+  level         Int       @default(1)
+  streak        Int       @default(0)
+  lastStudyDate DateTime?
+
+  accounts  Account[]
+  sessions  Session[]
+  notes     Note[]
+  decks     Deck[]
+  studySessions StudySession[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @db.Text
+  subject   String?
+  tags      String[]
+  userId    String
+  isPublic  Boolean  @default(false)
+  shareSlug String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  decks     Deck[]
+}
+
+model Deck {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  subject     String?
+  tags        String[]
+  color       String      @default("#7C3AED")
+  userId      String
+  noteId      String?
+  isPublic    Boolean     @default(false)
+  shareSlug   String?     @unique
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note        Note?       @relation(fields: [noteId], references: [id])
+  flashcards  Flashcard[]
+}
+
+model Flashcard {
+  id        String   @id @default(cuid())
+  deckId    String
+  front     String   @db.Text
+  back      String   @db.Text
+  tags      String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deck      Deck     @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  reviews   FlashcardReview[]
+}
+
+model FlashcardReview {
+  id          String    @id @default(cuid())
+  flashcardId String
+  userId      String
+  // SM-2 algorithm fields
+  easeFactor  Float     @default(2.5)
+  interval    Int       @default(0)   // days
+  repetitions Int       @default(0)
+  nextReview  DateTime  @default(now())
+  lastRating  Int?      // 0=fail,1=hard,2=good,3=easy
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  flashcard   Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+
+  @@unique([flashcardId, userId])
+}
+
+model StudySession {
+  id          String   @id @default(cuid())
+  userId      String
+  deckId      String?
+  cardsStudied Int     @default(0)
+  cardsKnown  Int      @default(0)
+  duration    Int      @default(0) // seconds
+  xpGained    Int      @default(0)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
