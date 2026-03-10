@@ -1,3 +1,4 @@
+"use client";
 import { AppShell } from "@/components/layout/AppShell";
 import { AmbientBackground } from "@/components/ui/AmbientBackground";
 
