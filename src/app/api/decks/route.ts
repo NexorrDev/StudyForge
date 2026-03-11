@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     const learned = deck.flashcards.filter(f => {
       const rating = f.reviews?.[0]?.lastRating;
-      return rating !== undefined && rating >= 2;
+      return rating != null && rating >= 2;
     }).length;
 
     const progress =
