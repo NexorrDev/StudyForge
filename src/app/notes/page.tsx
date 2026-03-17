@@ -33,14 +33,18 @@ export default function NotesPage() {
   return (
     <><AmbientBackground /><AppShell>
       <div style={{ display:"flex", flexDirection:"column", gap:28, position:"relative", zIndex:1 }} className="animate-slide-up">
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, flexWrap:"wrap" }}>
           <div>
             <h1 style={{ fontFamily:"var(--font-syne,sans-serif)", fontWeight:800, fontSize:36, color:"var(--text-primary)" }}>Fiches de révision</h1>
             <p style={{ marginTop:8, color:"var(--text-secondary)" }}>{notes.length} fiches{subjects.length > 0 ? ` · ${subjects.length} matières` : ""}</p>
           </div>
-          <div style={{ display:"flex", gap:10 }}>
-            <Link href="/import" style={{ padding:"10px 16px", borderRadius:12, fontFamily:"var(--font-syne,sans-serif)", fontWeight:600, fontSize:13, color:"var(--cyan)", textDecoration:"none", background:"rgba(6,214,232,0.08)", border:"1px solid rgba(6,214,232,0.2)" }}>📂 Importer</Link>
-            <Link href="/notes/new" style={{ padding:"10px 20px", borderRadius:12, fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, color:"white", textDecoration:"none", background:"linear-gradient(135deg,var(--primary),var(--primary-light))", boxShadow:"0 4px 20px var(--primary-glow)" }}>✦ Nouvelle fiche</Link>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+            <Link href="/notes/generate" style={{ padding:"10px 16px", borderRadius:12, fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, color:"var(--amber)", textDecoration:"none", background:"rgba(245,158,11,0.1)", border:"1px solid rgba(245,158,11,0.25)", display:"flex", alignItems:"center", gap:6 }}>
+              ✦ Générer avec l'IA
+            </Link>
+            <Link href="/notes/new" style={{ padding:"10px 20px", borderRadius:12, fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, color:"white", textDecoration:"none", background:"linear-gradient(135deg,var(--primary),var(--primary-light))", boxShadow:"0 4px 20px var(--primary-glow)" }}>
+              + Nouvelle fiche
+            </Link>
           </div>
         </div>
 
@@ -55,10 +59,10 @@ export default function NotesPage() {
         ) : notes.length === 0 ? (
           <div style={{ padding:60, textAlign:"center", borderRadius:16, border:"1px dashed var(--border)" }}>
             <p style={{ fontSize:40, marginBottom:16 }}>📖</p>
-            <p style={{ color:"var(--text-secondary)", marginBottom:20 }}>Aucune fiche pour le moment</p>
+            <p style={{ color:"var(--text-secondary)", marginBottom:24 }}>Aucune fiche pour le moment</p>
             <div style={{ display:"flex", gap:12, justifyContent:"center" }}>
-              <Link href="/notes/new" style={{ padding:"12px 24px", borderRadius:12, background:"var(--primary)", color:"white", textDecoration:"none", fontWeight:700 }}>Créer une fiche</Link>
-              <Link href="/import" style={{ padding:"12px 24px", borderRadius:12, background:"rgba(6,214,232,0.1)", color:"var(--cyan)", textDecoration:"none", fontWeight:600, border:"1px solid rgba(6,214,232,0.2)" }}>Importer un fichier</Link>
+              <Link href="/notes/generate" style={{ padding:"12px 24px", borderRadius:12, background:"rgba(245,158,11,0.15)", color:"var(--amber)", textDecoration:"none", fontWeight:700, border:"1px solid rgba(245,158,11,0.3)" }}>✦ Générer avec l'IA</Link>
+              <Link href="/notes/new" style={{ padding:"12px 24px", borderRadius:12, background:"var(--primary)", color:"white", textDecoration:"none", fontWeight:700 }}>Créer manuellement</Link>
             </div>
           </div>
         ) : (
