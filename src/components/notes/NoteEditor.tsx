@@ -11,12 +11,9 @@ import { AmbientBackground } from "@/components/ui/AmbientBackground";
 function ToolBtn({ onClick, active, title, children }: { onClick: () => void; active?: boolean; title: string; children: React.ReactNode }) {
   return (
     <button type="button" title={title} onClick={onClick} style={{
-      minWidth: 32, height: 30, padding: "0 8px", borderRadius: 6,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontSize: 13, cursor: "pointer", transition: "all 0.15s",
-      fontFamily: "var(--font-syne,sans-serif)", fontWeight: 700,
-      background: active ? "rgba(124,58,237,0.3)" : "transparent",
-      color: active ? "var(--primary-light)" : "var(--text-secondary)",
+      minWidth: 32, height: 30, padding: "0 8px", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: 13, cursor: "pointer", transition: "all 0.15s", fontFamily: "var(--font-syne,sans-serif)", fontWeight: 700,
+      background: active ? "rgba(124,58,237,0.3)" : "transparent", color: active ? "var(--primary-light)" : "var(--text-secondary)",
       border: active ? "1px solid rgba(124,58,237,0.4)" : "1px solid transparent",
     }}
     onMouseEnter={e => { if (!active) { e.currentTarget.style.background="rgba(255,255,255,0.06)"; e.currentTarget.style.color="var(--text-primary)"; }}}
@@ -25,66 +22,72 @@ function ToolBtn({ onClick, active, title, children }: { onClick: () => void; ac
     </button>
   );
 }
-
 function Divider() { return <div style={{ width:1, height:20, background:"var(--border)", margin:"0 4px" }} />; }
 
-// ── Render HTML + LaTeX into a read-only view ─────────────────────────────────
+function renderLatexInHtml(html: string): string {
+  if (typeof window === "undefined") return html;
+  const w = window as any;
+  if (!w.katex) return html;
+  return html
+    .replace(/\$\$([^$]+)\$\$/g, (_, expr) => {
+      try { return `<div class="katex-block-rendered">${w.katex.renderToString(expr.trim(), { displayMode: true, throwOnError: false })}</div>`; }
+      catch { return expr; }
+    })
+    .replace(/\$([^$\n<>]+)\$/g, (_, expr) => {
+      try { return `<span class="katex-inline-rendered">${w.katex.renderToString(expr.trim(), { displayMode: false, throwOnError: false })}</span>`; }
+      catch { return expr; }
+    });
+}
+
+// Detect if content is a full HTML document (AI-generated)
+function isFullHtml(content: string): boolean {
+  return content.trim().startsWith("<!DOCTYPE") || content.trim().startsWith("<html");
+}
+
 function NoteViewer({ html }: { html: string }) {
   const [rendered, setRendered] = useState(html);
-  const [katexReady, setKatexReady] = useState(false);
 
   useEffect(() => {
+    // Full HTML — show in iframe
+    if (isFullHtml(html)) { setRendered(html); return; }
+
     const w = window as any;
-    const doRender = () => {
-      setKatexReady(true);
-      const div = document.createElement("div");
-      div.innerHTML = html;
-      // Replace $$...$$ block
-      div.innerHTML = div.innerHTML.replace(/\$\$([^$]+)\$\$/g, (_, expr) => {
-        try { return `<div class="katex-block-rendered">${w.katex.renderToString(expr.trim(), { displayMode: true, throwOnError: false })}</div>`; }
-        catch { return `<div class="katex-block-rendered katex-error">${expr}</div>`; }
-      });
-      // Replace $...$ inline
-      div.innerHTML = div.innerHTML.replace(/\$([^$\n<>]+)\$/g, (_, expr) => {
-        try { return `<span class="katex-inline-rendered">${w.katex.renderToString(expr.trim(), { displayMode: false, throwOnError: false })}</span>`; }
-        catch { return `<span class="katex-inline-rendered">${expr}</span>`; }
-      });
-      setRendered(div.innerHTML);
-    };
+    const doRender = () => setRendered(renderLatexInHtml(html));
 
     if (w.katex) { doRender(); return; }
-
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css";
     document.head.appendChild(link);
-
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js";
     script.onload = doRender;
     document.head.appendChild(script);
   }, [html]);
 
+  if (isFullHtml(html)) {
+    return (
+      <iframe srcDoc={html} style={{ width:"100%", height:700, border:"none", display:"block" }}
+        title="Fiche de révision" sandbox="allow-scripts" />
+    );
+  }
+
   return (
-    <div
-      className="note-viewer"
-      dangerouslySetInnerHTML={{ __html: rendered }}
-      style={{ padding: 28, minHeight: 300, lineHeight: 1.8, fontSize: 15, color: "var(--text-primary)", fontFamily: "var(--font-dm-sans, sans-serif)" }}
-    />
+    <div className="note-viewer" dangerouslySetInnerHTML={{ __html: rendered }}
+      style={{ padding:28, minHeight:300, lineHeight:1.8, fontSize:15, color:"var(--text-primary)", fontFamily:"var(--font-dm-sans,sans-serif)" }} />
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 export default function NoteEditorPage({ noteId }: { noteId?: string }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"view" | "edit">(noteId ? "view" : "edit");
+  const [mode, setMode] = useState<"view"|"edit">(noteId ? "view" : "edit");
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
   const [tags, setTags] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [genCount, setGenCount] = useState(10);
+  const [genCount, setGenCount] = useState(15);
   const [deckTitle, setDeckTitle] = useState("");
   const [showGenPanel, setShowGenPanel] = useState(false);
   const [genMsg, setGenMsg] = useState("");
@@ -94,6 +97,7 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
   const [latexPreview, setLatexPreview] = useState("");
   const [katexLoaded, setKatexLoaded] = useState(false);
   const [htmlContent, setHtmlContent] = useState("");
+  const [isAiGenerated, setIsAiGenerated] = useState(false);
 
   useEffect(() => {
     const w = window as any;
@@ -111,9 +115,8 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
   useEffect(() => {
     if (!katexLoaded || !latexInput) { setLatexPreview(""); return; }
     try {
-      const rendered = (window as any).katex.renderToString(latexInput, { displayMode: true, throwOnError: false });
-      setLatexPreview(rendered);
-    } catch { setLatexPreview('<span style="color:var(--rose)">Erreur de syntaxe</span>'); }
+      setLatexPreview((window as any).katex.renderToString(latexInput, { displayMode: true, throwOnError: false }));
+    } catch { setLatexPreview('<span style="color:var(--rose)">Erreur</span>'); }
   }, [latexInput, katexLoaded]);
 
   const editor = useEditor({
@@ -126,8 +129,7 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
       },
     },
     onUpdate: ({ editor }) => {
-      const text = editor.getText();
-      setWordCount(text.split(/\s+/).filter(Boolean).length);
+      setWordCount(editor.getText().split(/\s+/).filter(Boolean).length);
       setHtmlContent(editor.getHTML());
     },
   });
@@ -139,9 +141,13 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
         setSubject(d.subject || "");
         setTags((d.tags || []).join(", "));
         if (d.content) {
-          editor.commands.setContent(d.content);
+          const fullHtml = isFullHtml(d.content);
+          setIsAiGenerated(fullHtml);
           setHtmlContent(d.content);
-          setWordCount(d.content.replace(/<[^>]+>/g, "").split(/\s+/).filter(Boolean).length);
+          if (!fullHtml) {
+            editor.commands.setContent(d.content);
+          }
+          setWordCount(d.content.replace(/<[^>]+>/g,"").split(/\s+/).filter(Boolean).length);
         }
       });
     }
@@ -150,9 +156,9 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
   const handleSave = async () => {
     if (!title.trim() || !editor) return;
     setSaving(true);
-    const content = editor.getHTML();
+    const content = isAiGenerated ? htmlContent : editor.getHTML();
     setHtmlContent(content);
-    const body = { title, content, subject, tags: tags.split(",").map((t: string) => t.trim()).filter(Boolean) };
+    const body = { title, content, subject, tags: tags.split(",").map((t:string)=>t.trim()).filter(Boolean) };
     if (noteId) {
       await fetch(`/api/notes/${noteId}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
       setSaving(false); setSaved(true);
@@ -166,19 +172,18 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
 
   const insertLatex = (display: boolean) => {
     if (!editor || !latexInput.trim()) return;
-    const tex = display ? `$$${latexInput}$$` : `$${latexInput}$`;
-    editor.chain().focus().insertContent(tex + " ").run();
+    editor.chain().focus().insertContent((display ? `$$${latexInput}$$` : `$${latexInput}$`) + " ").run();
     setLatexInput(""); setShowLatexHelper(false);
   };
 
   const handleGenerate = async () => {
     if (!editor) return;
-    const content = editor.getText();
-    if (!content.trim() && !title.trim()) { setGenMsg("Ajoute du contenu à ta fiche d'abord !"); return; }
+    const content = isAiGenerated ? "" : editor.getText();
+    if (!content.trim() && !title.trim()) { setGenMsg("Ajoute du contenu d'abord !"); return; }
     setGenerating(true); setGenMsg("");
     const res = await fetch("/api/cards/generate", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ noteTitle:title, noteContent:content, count:genCount }),
+      body:JSON.stringify({ noteTitle:title, noteContent: isAiGenerated ? title : content, count:genCount }),
     });
     if (!res.ok) { const err = await res.json(); setGenMsg(err.error||"Erreur."); setGenerating(false); return; }
     const data = await res.json();
@@ -191,16 +196,11 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
   };
 
   const iStyle: React.CSSProperties = { width:"100%", padding:"11px 14px", borderRadius:10, background:"var(--bg-card)", border:"1px solid var(--border)", color:"var(--text-primary)", fontSize:14, outline:"none", fontFamily:"var(--font-dm-sans,sans-serif)", transition:"border-color 0.2s" };
-
-  const LATEX_EXAMPLES = [
-    { label:"Fraction", code:"\\frac{a}{b}" },
-    { label:"Puissance", code:"x^{n}" },
-    { label:"Intégrale", code:"\\int_0^\\infty f(x)dx" },
-    { label:"Somme", code:"\\sum_{i=1}^{n} x_i" },
-    { label:"Racine", code:"\\sqrt{x^2+y^2}" },
-    { label:"Vecteur", code:"\\vec{F}=m\\vec{a}" },
-    { label:"Grec", code:"\\alpha,\\beta,\\gamma,\\Delta" },
-    { label:"E=mc²", code:"E=mc^2" },
+  const LATEX_EX = [
+    { label:"Fraction", code:"\\frac{a}{b}" }, { label:"Puissance", code:"x^{n}" },
+    { label:"Intégrale", code:"\\int_0^\\infty f(x)dx" }, { label:"Somme", code:"\\sum_{i=1}^{n}x_i" },
+    { label:"Racine", code:"\\sqrt{x^2+y^2}" }, { label:"Vecteur", code:"\\vec{F}=m\\vec{a}" },
+    { label:"Grec", code:"\\alpha,\\beta,\\gamma" }, { label:"E=mc²", code:"E=mc^2" },
   ];
 
   return (
@@ -212,46 +212,41 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
         .tiptap-editor-inner p,.note-viewer p{margin-bottom:10px;}
         .tiptap-editor-inner strong,.note-viewer strong{color:var(--primary-light);font-weight:700;}
         .tiptap-editor-inner em,.note-viewer em{color:var(--cyan);font-style:italic;}
-        .tiptap-editor-inner u,.note-viewer u{text-decoration:underline;text-decoration-color:var(--amber);}
-        .tiptap-editor-inner s,.note-viewer s{text-decoration:line-through;color:var(--text-muted);}
         .tiptap-editor-inner code,.note-viewer code{background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.25);border-radius:6px;padding:2px 8px;font-size:13px;color:var(--primary-light);font-family:monospace;}
         .tiptap-editor-inner pre,.note-viewer pre{background:rgba(0,0,0,0.5);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin:14px 0;overflow-x:auto;}
-        .tiptap-editor-inner pre code,.note-viewer pre code{background:none;border:none;padding:0;font-size:13px;color:var(--cyan);}
         .tiptap-editor-inner blockquote,.note-viewer blockquote{border-left:3px solid var(--primary);padding-left:16px;margin:14px 0;color:var(--text-secondary);font-style:italic;}
         .tiptap-editor-inner ul,.note-viewer ul{padding-left:22px;margin-bottom:12px;list-style:disc;}
         .tiptap-editor-inner ol,.note-viewer ol{padding-left:22px;margin-bottom:12px;list-style:decimal;}
         .tiptap-editor-inner li,.note-viewer li{margin-bottom:4px;}
         .tiptap-editor-inner hr,.note-viewer hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
-        .tiptap-editor-inner ::selection{background:rgba(124,58,237,0.3);}
-        .katex-block-rendered{display:block;text-align:center;margin:16px 0;padding:16px;background:rgba(6,214,232,0.04);border-radius:12px;border:1px solid rgba(6,214,232,0.15);overflow-x:auto;}
+        .katex-block-rendered{display:block;text-align:center;margin:14px 0;padding:14px;background:rgba(6,214,232,0.04);border-radius:10px;border:1px solid rgba(6,214,232,0.15);overflow-x:auto;}
         .katex-inline-rendered{display:inline;padding:0 2px;}
-        .katex-error{color:var(--rose);font-size:13px;font-family:monospace;}
-        .note-viewer .katex{font-size:1.1em;}
       `}</style>
 
       <AmbientBackground />
       <AppShell>
         <div style={{ display:"flex", flexDirection:"column", gap:20, position:"relative", zIndex:1 }} className="animate-slide-up">
 
-          {/* ── HEADER ── */}
+          {/* Header */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
             <div>
               <Link href="/notes" style={{ fontSize:13, color:"var(--text-secondary)", textDecoration:"none", display:"inline-block", marginBottom:6 }}>← Retour aux fiches</Link>
               <h1 style={{ fontFamily:"var(--font-syne,sans-serif)", fontWeight:800, fontSize:26, color:"var(--text-primary)" }}>
                 {title || (noteId ? "Fiche" : "Nouvelle fiche")}
               </h1>
-              {subject && <span style={{ fontSize:11, padding:"2px 10px", borderRadius:20, marginTop:6, display:"inline-block", background:"rgba(124,58,237,0.15)", color:"var(--primary-light)", fontWeight:600 }}>{subject}</span>}
+              {isAiGenerated && <span style={{ fontSize:11, padding:"2px 10px", borderRadius:20, marginTop:6, display:"inline-block", background:"rgba(245,158,11,0.12)", color:"var(--amber)", fontWeight:600, border:"1px solid rgba(245,158,11,0.25)" }}>✦ Générée par l'IA</span>}
+              {subject && !isAiGenerated && <span style={{ fontSize:11, padding:"2px 10px", borderRadius:20, marginTop:6, display:"inline-block", background:"rgba(124,58,237,0.15)", color:"var(--primary-light)", fontWeight:600 }}>{subject}</span>}
             </div>
-            <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+            <div style={{ display:"flex", gap:10 }}>
               {mode === "view" ? (
                 <>
-                  <button onClick={() => setShowGenPanel(!showGenPanel)} style={{ padding:"9px 16px", borderRadius:12, border:"1px solid rgba(124,58,237,0.3)", background:"rgba(124,58,237,0.1)", color:"var(--primary-light)", cursor:"pointer", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600, fontSize:13 }}>✦ Générer des flashcards</button>
-                  <button onClick={() => setMode("edit")} style={{ padding:"9px 20px", borderRadius:12, border:"none", cursor:"pointer", background:"linear-gradient(135deg,var(--primary),var(--primary-light))", color:"white", fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, boxShadow:"0 4px 16px var(--primary-glow)" }}>✏️ Modifier</button>
+                  <button onClick={()=>setShowGenPanel(!showGenPanel)} style={{ padding:"9px 16px", borderRadius:12, border:"1px solid rgba(124,58,237,0.3)", background:"rgba(124,58,237,0.1)", color:"var(--primary-light)", cursor:"pointer", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600, fontSize:13 }}>✦ Générer flashcards</button>
+                  {!isAiGenerated && <button onClick={()=>setMode("edit")} style={{ padding:"9px 20px", borderRadius:12, border:"none", cursor:"pointer", background:"linear-gradient(135deg,var(--primary),var(--primary-light))", color:"white", fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, boxShadow:"0 4px 16px var(--primary-glow)" }}>✏️ Modifier</button>}
                 </>
               ) : (
                 <>
-                  {noteId && <button onClick={() => setMode("view")} style={{ padding:"9px 16px", borderRadius:12, cursor:"pointer", background:"transparent", border:"1px solid var(--border)", color:"var(--text-secondary)", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600, fontSize:13 }}>👁 Aperçu</button>}
-                  <button onClick={() => setShowGenPanel(!showGenPanel)} style={{ padding:"9px 16px", borderRadius:12, border:"1px solid rgba(124,58,237,0.3)", background:"rgba(124,58,237,0.1)", color:"var(--primary-light)", cursor:"pointer", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600, fontSize:13 }}>✦ IA → Cartes</button>
+                  {noteId && <button onClick={()=>setMode("view")} style={{ padding:"9px 16px", borderRadius:12, cursor:"pointer", background:"transparent", border:"1px solid var(--border)", color:"var(--text-secondary)", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600, fontSize:13 }}>👁 Aperçu</button>}
+                  <button onClick={()=>setShowGenPanel(!showGenPanel)} style={{ padding:"9px 14px", borderRadius:12, border:"1px solid rgba(124,58,237,0.3)", background:"rgba(124,58,237,0.1)", color:"var(--primary-light)", cursor:"pointer", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600, fontSize:13 }}>✦ Flashcards</button>
                   <button onClick={handleSave} disabled={saving||!title.trim()} style={{ padding:"9px 20px", borderRadius:12, border:"none", cursor:saving?"not-allowed":"pointer", background:"linear-gradient(135deg,var(--primary),var(--primary-light))", color:"white", fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, opacity:saving||!title.trim()?0.6:1 }}>
                     {saving?"Sauvegarde...":saved?"✓ Sauvegardé !":"💾 Sauvegarder"}
                   </button>
@@ -260,7 +255,7 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
             </div>
           </div>
 
-          {/* ── AI PANEL ── */}
+          {/* AI flashcard panel */}
           {showGenPanel && (
             <div style={{ padding:18, borderRadius:14, background:"rgba(124,58,237,0.06)", border:"1px solid rgba(124,58,237,0.2)" }}>
               <h3 style={{ fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, marginBottom:12, color:"var(--text-primary)" }}>✦ Générer des flashcards avec Hunter Alpha</h3>
@@ -274,38 +269,37 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
                   <input type="number" value={genCount} onChange={e=>setGenCount(Number(e.target.value))} min={1} max={50} style={{...iStyle,textAlign:"center"}} />
                 </div>
                 <button onClick={handleGenerate} disabled={generating} style={{ padding:"11px 20px", borderRadius:10, border:"none", cursor:generating?"not-allowed":"pointer", background:"var(--primary)", color:"white", fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, opacity:generating?0.7:1 }}>
-                  {generating?"Génération...":"Générer →"}
+                  {generating?"...":"Générer →"}
                 </button>
               </div>
               {genMsg&&<p style={{ marginTop:10, fontSize:13, color:genMsg.startsWith("✓")?"var(--emerald)":"var(--rose)" }}>{genMsg}</p>}
             </div>
           )}
 
-          {/* ── VIEW MODE ── */}
+          {/* VIEW MODE */}
           {mode === "view" && (
-            <div style={{ borderRadius:16, border:"1px solid var(--border)", background:"var(--bg-card)", overflow:"hidden" }}>
-              <div style={{ padding:"10px 20px", background:"rgba(0,0,0,0.2)", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", gap:12 }}>
-                <span style={{ fontSize:12, color:"var(--text-secondary)", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600 }}>Mode lecture</span>
-                {tags && <div style={{ display:"flex", gap:6 }}>
-                  {tags.split(",").map(t=>t.trim()).filter(Boolean).map(t=>(
+            <div style={{ borderRadius:16, border:"1px solid var(--border)", background:isAiGenerated?"#0a0a0f":"var(--bg-card)", overflow:"hidden" }}>
+              {!isAiGenerated && (
+                <div style={{ padding:"10px 20px", background:"rgba(0,0,0,0.2)", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", gap:12 }}>
+                  <span style={{ fontSize:12, color:"var(--text-secondary)", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600 }}>Mode lecture</span>
+                  {tags && tags.split(",").map(t=>t.trim()).filter(Boolean).map(t=>(
                     <span key={t} style={{ fontSize:10, padding:"2px 8px", borderRadius:10, background:"rgba(6,214,232,0.08)", color:"var(--cyan)", border:"1px solid rgba(6,214,232,0.15)" }}>#{t}</span>
                   ))}
-                </div>}
-                <span style={{ marginLeft:"auto", fontSize:11, color:"var(--text-muted)" }}>{wordCount} mots</span>
-              </div>
+                  <span style={{ marginLeft:"auto", fontSize:11, color:"var(--text-muted)" }}>{wordCount} mots</span>
+                </div>
+              )}
               {htmlContent
                 ? <NoteViewer html={htmlContent} />
-                : <div style={{ padding:40, textAlign:"center", color:"var(--text-muted)", fontStyle:"italic" }}>Fiche vide — clique sur Modifier pour commencer à écrire</div>
+                : <div style={{ padding:40, textAlign:"center", color:"var(--text-muted)", fontStyle:"italic" }}>Fiche vide — clique Modifier pour commencer</div>
               }
             </div>
           )}
 
-          {/* ── EDIT MODE ── */}
-          {mode === "edit" && (
+          {/* EDIT MODE */}
+          {mode === "edit" && !isAiGenerated && (
             <>
-              {/* Metadata */}
               <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:14 }}>
-                {[{label:"Titre *",ph:"ex: Mécanique Quantique",val:title,set:setTitle},{label:"Matière",ph:"ex: Physique",val:subject,set:setSubject},{label:"Tags (virgules)",ph:"ex: quantique, ondes",val:tags,set:setTags}].map(f=>(
+                {[{label:"Titre *",ph:"ex: Mécanique Quantique",val:title,set:setTitle},{label:"Matière",ph:"ex: Physique",val:subject,set:setSubject},{label:"Tags",ph:"ex: quantique, ondes",val:tags,set:setTags}].map(f=>(
                   <div key={f.label}>
                     <label style={{ display:"block", fontSize:11, fontWeight:600, color:"var(--text-secondary)", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.06em" }}>{f.label}</label>
                     <input value={f.val} onChange={e=>f.set(e.target.value)} placeholder={f.ph} style={iStyle}
@@ -315,76 +309,64 @@ export default function NoteEditorPage({ noteId }: { noteId?: string }) {
                 ))}
               </div>
 
-              {/* LaTeX helper */}
               {showLatexHelper && (
                 <div style={{ padding:18, borderRadius:14, background:"rgba(6,214,232,0.04)", border:"1px solid rgba(6,214,232,0.2)" }}>
                   <h3 style={{ fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, marginBottom:12, color:"var(--text-primary)" }}>∑ Insérer une équation LaTeX</h3>
                   <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
-                    {LATEX_EXAMPLES.map(ex=>(
-                      <button key={ex.label} onClick={()=>setLatexInput(ex.code)} style={{ padding:"4px 12px", borderRadius:8, fontSize:12, cursor:"pointer", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600, background:"rgba(6,214,232,0.1)", color:"var(--cyan)", border:"1px solid rgba(6,214,232,0.2)" }}>{ex.label}</button>
-                    ))}
+                    {LATEX_EX.map(ex=><button key={ex.label} onClick={()=>setLatexInput(ex.code)} style={{ padding:"4px 12px", borderRadius:8, fontSize:12, cursor:"pointer", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600, background:"rgba(6,214,232,0.1)", color:"var(--cyan)", border:"1px solid rgba(6,214,232,0.2)" }}>{ex.label}</button>)}
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:12 }}>
                     <div>
-                      <label style={{ display:"block", fontSize:11, fontWeight:600, color:"var(--text-secondary)", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.06em" }}>Code LaTeX</label>
+                      <label style={{ display:"block", fontSize:11, fontWeight:600, color:"var(--text-secondary)", marginBottom:6, textTransform:"uppercase" }}>Code LaTeX</label>
                       <input value={latexInput} onChange={e=>setLatexInput(e.target.value)} placeholder="ex: \frac{1}{2}mv^2" style={{...iStyle,fontFamily:"monospace"}}
-                        onKeyDown={e=>{ if(e.key==="Enter"){e.preventDefault();insertLatex(true);}}} />
+                        onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();insertLatex(true);}}} />
                     </div>
                     <div>
-                      <label style={{ display:"block", fontSize:11, fontWeight:600, color:"var(--text-secondary)", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.06em" }}>Aperçu</label>
+                      <label style={{ display:"block", fontSize:11, fontWeight:600, color:"var(--text-secondary)", marginBottom:6, textTransform:"uppercase" }}>Aperçu</label>
                       <div style={{ minHeight:44, padding:"10px 14px", borderRadius:10, background:"rgba(0,0,0,0.3)", border:"1px solid var(--border)", display:"flex", alignItems:"center", justifyContent:"center" }}
-                        dangerouslySetInnerHTML={{ __html: latexPreview||'<span style="color:var(--text-muted);font-style:italic;font-size:13px">Tapez une formule...</span>' }} />
+                        dangerouslySetInnerHTML={{ __html:latexPreview||'<span style="color:var(--text-muted);font-style:italic;font-size:13px">Tapez une formule...</span>' }} />
                     </div>
                   </div>
-                  <div style={{ display:"flex", gap:10, marginTop:14 }}>
-                    <button onClick={()=>insertLatex(false)} disabled={!latexInput.trim()} style={{ padding:"8px 18px", borderRadius:10, border:"none", cursor:!latexInput.trim()?"not-allowed":"pointer", background:"rgba(6,214,232,0.15)", color:"var(--cyan)", fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, opacity:!latexInput.trim()?0.5:1 }}>Insérer en ligne</button>
-                    <button onClick={()=>insertLatex(true)} disabled={!latexInput.trim()} style={{ padding:"8px 18px", borderRadius:10, border:"none", cursor:!latexInput.trim()?"not-allowed":"pointer", background:"rgba(124,58,237,0.2)", color:"var(--primary-light)", fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, opacity:!latexInput.trim()?0.5:1 }}>Insérer en bloc</button>
+                  <div style={{ display:"flex", gap:10 }}>
+                    <button onClick={()=>insertLatex(false)} disabled={!latexInput.trim()} style={{ padding:"8px 18px", borderRadius:10, border:"none", cursor:!latexInput.trim()?"not-allowed":"pointer", background:"rgba(6,214,232,0.15)", color:"var(--cyan)", fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, opacity:!latexInput.trim()?0.5:1 }}>En ligne</button>
+                    <button onClick={()=>insertLatex(true)} disabled={!latexInput.trim()} style={{ padding:"8px 18px", borderRadius:10, border:"none", cursor:!latexInput.trim()?"not-allowed":"pointer", background:"rgba(124,58,237,0.2)", color:"var(--primary-light)", fontFamily:"var(--font-syne,sans-serif)", fontWeight:700, fontSize:13, opacity:!latexInput.trim()?0.5:1 }}>En bloc</button>
                     <button onClick={()=>setShowLatexHelper(false)} style={{ padding:"8px 18px", borderRadius:10, cursor:"pointer", background:"transparent", border:"1px solid var(--border)", color:"var(--text-secondary)", fontFamily:"var(--font-syne,sans-serif)", fontWeight:600, fontSize:13 }}>Fermer</button>
                   </div>
                 </div>
               )}
 
-              {/* Rich text editor */}
               <div style={{ borderRadius:16, overflow:"hidden", border:"1px solid var(--border-bright)", background:"var(--bg-card)" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:2, padding:"8px 12px", background:"rgba(0,0,0,0.25)", borderBottom:"1px solid var(--border)", flexWrap:"wrap" }}>
-                  <ToolBtn onClick={()=>editor?.chain().focus().toggleBold().run()} active={editor?.isActive("bold")} title="Gras (Ctrl+B)"><strong>B</strong></ToolBtn>
-                  <ToolBtn onClick={()=>editor?.chain().focus().toggleItalic().run()} active={editor?.isActive("italic")} title="Italique (Ctrl+I)"><em>I</em></ToolBtn>
+                  <ToolBtn onClick={()=>editor?.chain().focus().toggleBold().run()} active={editor?.isActive("bold")} title="Gras"><strong>B</strong></ToolBtn>
+                  <ToolBtn onClick={()=>editor?.chain().focus().toggleItalic().run()} active={editor?.isActive("italic")} title="Italique"><em>I</em></ToolBtn>
                   <ToolBtn onClick={()=>editor?.chain().focus().toggleUnderline().run()} active={editor?.isActive("underline")} title="Souligné"><u>U</u></ToolBtn>
                   <ToolBtn onClick={()=>editor?.chain().focus().toggleStrike().run()} active={editor?.isActive("strike")} title="Barré"><s>S</s></ToolBtn>
                   <Divider />
-                  <ToolBtn onClick={()=>editor?.chain().focus().toggleHeading({level:1}).run()} active={editor?.isActive("heading",{level:1})} title="Titre 1">H1</ToolBtn>
-                  <ToolBtn onClick={()=>editor?.chain().focus().toggleHeading({level:2}).run()} active={editor?.isActive("heading",{level:2})} title="Titre 2">H2</ToolBtn>
-                  <ToolBtn onClick={()=>editor?.chain().focus().toggleHeading({level:3}).run()} active={editor?.isActive("heading",{level:3})} title="Titre 3">H3</ToolBtn>
+                  <ToolBtn onClick={()=>editor?.chain().focus().toggleHeading({level:1}).run()} active={editor?.isActive("heading",{level:1})} title="H1">H1</ToolBtn>
+                  <ToolBtn onClick={()=>editor?.chain().focus().toggleHeading({level:2}).run()} active={editor?.isActive("heading",{level:2})} title="H2">H2</ToolBtn>
+                  <ToolBtn onClick={()=>editor?.chain().focus().toggleHeading({level:3}).run()} active={editor?.isActive("heading",{level:3})} title="H3">H3</ToolBtn>
                   <Divider />
-                  <ToolBtn onClick={()=>editor?.chain().focus().toggleBulletList().run()} active={editor?.isActive("bulletList")} title="Liste à puces">•—</ToolBtn>
-                  <ToolBtn onClick={()=>editor?.chain().focus().toggleOrderedList().run()} active={editor?.isActive("orderedList")} title="Liste numérotée">1.</ToolBtn>
+                  <ToolBtn onClick={()=>editor?.chain().focus().toggleBulletList().run()} active={editor?.isActive("bulletList")} title="Liste">•—</ToolBtn>
+                  <ToolBtn onClick={()=>editor?.chain().focus().toggleOrderedList().run()} active={editor?.isActive("orderedList")} title="Numérotée">1.</ToolBtn>
                   <Divider />
-                  <ToolBtn onClick={()=>editor?.chain().focus().toggleCode().run()} active={editor?.isActive("code")} title="Code inline">`</ToolBtn>
-                  <ToolBtn onClick={()=>editor?.chain().focus().toggleCodeBlock().run()} active={editor?.isActive("codeBlock")} title="Bloc de code">{`</>`}</ToolBtn>
+                  <ToolBtn onClick={()=>editor?.chain().focus().toggleCode().run()} active={editor?.isActive("code")} title="Code">`</ToolBtn>
+                  <ToolBtn onClick={()=>editor?.chain().focus().toggleCodeBlock().run()} active={editor?.isActive("codeBlock")} title="Bloc code">{`</>`}</ToolBtn>
                   <ToolBtn onClick={()=>editor?.chain().focus().toggleBlockquote().run()} active={editor?.isActive("blockquote")} title="Citation">"</ToolBtn>
                   <Divider />
-                  <button type="button" onClick={()=>setShowLatexHelper(!showLatexHelper)} title="Équation LaTeX"
-                    style={{ padding:"0 12px", height:30, borderRadius:6, cursor:"pointer", fontSize:13, fontWeight:700, fontFamily:"monospace",
-                      background:showLatexHelper?"rgba(6,214,232,0.2)":"rgba(6,214,232,0.08)",
-                      color:showLatexHelper?"var(--cyan)":"rgba(6,214,232,0.7)",
-                      border:showLatexHelper?"1px solid rgba(6,214,232,0.4)":"1px solid rgba(6,214,232,0.15)" }}>
-                    ∑ LaTeX
-                  </button>
+                  <button type="button" onClick={()=>setShowLatexHelper(!showLatexHelper)} style={{ padding:"0 12px", height:30, borderRadius:6, cursor:"pointer", fontSize:13, fontWeight:700, fontFamily:"monospace", background:showLatexHelper?"rgba(6,214,232,0.2)":"rgba(6,214,232,0.08)", color:showLatexHelper?"var(--cyan)":"rgba(6,214,232,0.7)", border:showLatexHelper?"1px solid rgba(6,214,232,0.4)":"1px solid rgba(6,214,232,0.15)" }}>∑ LaTeX</button>
                   <Divider />
                   <ToolBtn onClick={()=>editor?.chain().focus().setHorizontalRule().run()} active={false} title="Séparateur">—</ToolBtn>
                   <div style={{ marginLeft:"auto", display:"flex", gap:2 }}>
-                    <ToolBtn onClick={()=>editor?.chain().focus().undo().run()} active={false} title="Annuler (Ctrl+Z)">↩</ToolBtn>
+                    <ToolBtn onClick={()=>editor?.chain().focus().undo().run()} active={false} title="Annuler">↩</ToolBtn>
                     <ToolBtn onClick={()=>editor?.chain().focus().redo().run()} active={false} title="Rétablir">↪</ToolBtn>
                   </div>
                 </div>
                 {editor ? <EditorContent editor={editor} /> : <div style={{ padding:24, color:"var(--text-muted)", fontStyle:"italic" }}>Chargement...</div>}
               </div>
-
               <div style={{ display:"flex", justifyContent:"space-between" }}>
                 <p style={{ fontSize:12, color:"var(--text-muted)" }}>
                   <kbd style={{ background:"rgba(255,255,255,0.06)", border:"1px solid var(--border)", borderRadius:4, padding:"1px 5px", fontSize:11 }}>Ctrl+B</kbd> gras ·{" "}
-                  <kbd style={{ background:"rgba(255,255,255,0.06)", border:"1px solid var(--border)", borderRadius:4, padding:"1px 5px", fontSize:11 }}>Ctrl+I</kbd> italique ·{" "}
-                  <kbd style={{ background:"rgba(255,255,255,0.06)", border:"1px solid var(--border)", borderRadius:4, padding:"1px 5px", fontSize:11 }}>Ctrl+Z</kbd> annuler
+                  <kbd style={{ background:"rgba(255,255,255,0.06)", border:"1px solid var(--border)", borderRadius:4, padding:"1px 5px", fontSize:11 }}>Ctrl+I</kbd> italique
                 </p>
                 <p style={{ fontSize:12, color:"var(--text-muted)" }}>{wordCount} mots</p>
               </div>
