@@ -14,23 +14,14 @@ function stripHtml(html: string): string {
 
 async function extractTextFromFile(file: File): Promise<string> {
   const name = file.name.toLowerCase();
-
-  // PDF — use pdf-parse
   if (name.endsWith(".pdf")) {
     const pdfParse = (await import("pdf-parse")).default;
     const buffer = Buffer.from(await file.arrayBuffer());
     const data = await pdfParse(buffer);
     return data.text || "";
   }
-
   const raw = await file.text();
-
-  // HTML
-  if (name.match(/\.html?$/) || raw.trim().startsWith("<")) {
-    return stripHtml(raw);
-  }
-
-  // Markdown, txt, csv — return as-is
+  if (name.match(/\.html?$/) || raw.trim().startsWith("<")) return stripHtml(raw);
   return raw;
 }
 
@@ -58,12 +49,12 @@ async function callAI(prompt: string, apiKey: string): Promise<string> {
 
 function buildPrompt(title: string, subject: string, courseText: string, hasFile: boolean): string {
   const strictRule = hasFile
-    ? `⚠️ RÈGLE ABSOLUE : Basez-vous UNIQUEMENT sur le contenu fourni. N'ajoutez RIEN qui ne soit pas explicitement dans ce cours. Pas de définitions supplémentaires, pas de formules inventées, pas de contexte extérieur.`
+    ? `⚠️ RÈGLE ABSOLUE : Basez-vous UNIQUEMENT sur le contenu fourni. N'ajoutez rien qui n'est pas explicitement dans ce cours.`
     : `Génère une fiche complète et pédagogique sur ce sujet.`;
 
   return `Tu es un expert en pédagogie. Génère une fiche de révision HTML visuelle.
 
-Titre exact : "${title}"${subject ? `\nMatière : ${subject}` : ""}
+Titre : "${title}"${subject ? `\nMatière : ${subject}` : ""}
 
 ${strictRule}
 
@@ -72,12 +63,11 @@ ${courseText ? `=== CONTENU DU COURS ===\n${courseText.substring(0, 11000)}\n===
 EXIGENCES HTML :
 - Document HTML complet avec <style> intégré (dark theme, bg #0a0a0f)
 - Dans <head> : <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-- Fonts Google : Syne (titres 700/800) + DM Mono (code/formules)
+- Fonts Google : Syne (titres 700/800) + DM Mono (formules)
 - Couleurs : vert #6ee7b7 (définitions), violet #818cf8 (formules), rose #f472b6 (exemples)
 - Structure fidèle au cours, mêmes sections dans le même ordre
 - Formules : \\( ... \\) inline, \\[ ... \\] en bloc
 - Cards colorées, tableaux récap, points clés
-- <title> et <h1> = exactement "${title}"
 
 Réponds UNIQUEMENT avec le code HTML, sans markdown.`;
 }
@@ -101,7 +91,8 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     subject = (formData.get("subject") as string) || "";
-    userTitle = (formData.get("topic") as string) || "";
+    // ← titre vient TOUJOURS du formulaire en priorité
+    userTitle = ((formData.get("topic") as string) || "").trim();
 
     if (!file) return NextResponse.json({ error: "Aucun fichier" }, { status: 400 });
     if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: "Fichier trop grand (max 10 Mo)" }, { status: 400 });
@@ -118,13 +109,14 @@ export async function POST(req: NextRequest) {
 
     hasFile = true;
 
+    // Titre de fallback = nom du fichier SEULEMENT si l'utilisateur n'a rien mis
     if (!userTitle) {
       userTitle = file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
     }
 
   } else {
     const body = await req.json();
-    userTitle = body.topic || "";
+    userTitle = (body.topic || "").trim();
     courseText = body.content || "";
     subject = body.subject || "";
     hasFile = !!courseText;
@@ -140,11 +132,9 @@ export async function POST(req: NextRequest) {
 
     html = html.replace(/^```html\s*/i, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
 
-    // Force the user's title
-    if (userTitle) {
-      html = html.replace(/<title[^>]*>[^<]*<\/title>/i, `<title>${userTitle}</title>`);
-      html = html.replace(/<h1[^>]*>[^<]*<\/h1>/i, `<h1>${userTitle}</h1>`);
-    }
+    // Force le titre utilisateur dans le HTML généré
+    html = html.replace(/<title[^>]*>[^<]*<\/title>/i, `<title>${userTitle}</title>`);
+    html = html.replace(/<h1[^>]*>[^<]*<\/h1>/i, `<h1>${userTitle}</h1>`);
 
     const note = await prisma.note.create({
       data: { title: userTitle, content: html, subject: subject || null, userId },
