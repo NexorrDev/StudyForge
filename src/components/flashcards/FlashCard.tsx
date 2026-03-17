@@ -24,20 +24,18 @@ function useKatex() {
 function renderMath(text: string, ready: boolean): string {
   if (!ready || typeof window === "undefined") return escapeHtml(text).replace(/\n/g, "<br>");
   const w = window as any;
-  // Process block first, then inline
   let out = text;
-  // $$...$$ block
-  out = out.replace(/\$\$([^$]+)\$\$/gs, (_, expr) => {
+  // $$...$$ block (no s flag — use [\s\S] instead)
+  out = out.replace(/\$\$([\s\S]+?)\$\$/g, (_, expr) => {
     try { return `<div class="kblock">${w.katex.renderToString(expr.trim(), { displayMode: true, throwOnError: false })}</div>`; }
     catch { return `<code class="kfail">${expr}</code>`; }
   });
   // $...$ inline
-  out = out.replace(/\$([^$\n]+)\$/g, (_, expr) => {
+  out = out.replace(/\$([^$\n]+?)\$/g, (_, expr) => {
     try { return `<span class="kinline">${w.katex.renderToString(expr.trim(), { displayMode: false, throwOnError: false })}</span>`; }
     catch { return `<code class="kfail">${expr}</code>`; }
   });
-  // Convert newlines outside tags
-  out = out.replace(/(?<![>])\n(?![<])/g, "<br>");
+  out = out.replace(/\n/g, "<br>");
   return out;
 }
 
