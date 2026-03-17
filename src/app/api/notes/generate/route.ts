@@ -12,6 +12,28 @@ function stripHtml(html: string): string {
     .replace(/\s{3,}/g, "\n\n").trim();
 }
 
+async function extractTextFromFile(file: File): Promise<string> {
+  const name = file.name.toLowerCase();
+
+  // PDF — use pdf-parse
+  if (name.endsWith(".pdf")) {
+    const pdfParse = (await import("pdf-parse")).default;
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const data = await pdfParse(buffer);
+    return data.text || "";
+  }
+
+  const raw = await file.text();
+
+  // HTML
+  if (name.match(/\.html?$/) || raw.trim().startsWith("<")) {
+    return stripHtml(raw);
+  }
+
+  // Markdown, txt, csv — return as-is
+  return raw;
+}
+
 async function callAI(prompt: string, apiKey: string): Promise<string> {
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -36,28 +58,28 @@ async function callAI(prompt: string, apiKey: string): Promise<string> {
 
 function buildPrompt(title: string, subject: string, courseText: string, hasFile: boolean): string {
   const strictRule = hasFile
-    ? `⚠️ RÈGLE ABSOLUE : Tu dois te baser UNIQUEMENT sur le contenu fourni ci-dessous. N'ajoute RIEN qui ne soit pas explicitement dans ce cours. Pas de définitions supplémentaires, pas de formules inventées, pas de contexte extérieur. Si une notion n'est pas dans le texte, ne la mets pas dans la fiche.`
+    ? `⚠️ RÈGLE ABSOLUE : Basez-vous UNIQUEMENT sur le contenu fourni. N'ajoutez RIEN qui ne soit pas explicitement dans ce cours. Pas de définitions supplémentaires, pas de formules inventées, pas de contexte extérieur.`
     : `Génère une fiche complète et pédagogique sur ce sujet.`;
 
   return `Tu es un expert en pédagogie. Génère une fiche de révision HTML visuelle.
 
-Titre exact de la fiche : "${title}"${subject ? `\nMatière : ${subject}` : ""}
+Titre exact : "${title}"${subject ? `\nMatière : ${subject}` : ""}
 
 ${strictRule}
 
-${courseText ? `=== CONTENU DU COURS (source unique) ===\n${courseText.substring(0, 11000)}\n=== FIN DU COURS ===` : ""}
+${courseText ? `=== CONTENU DU COURS ===\n${courseText.substring(0, 11000)}\n=== FIN ===` : ""}
 
 EXIGENCES HTML :
 - Document HTML complet avec <style> intégré (dark theme, bg #0a0a0f)
 - Dans <head> : <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 - Fonts Google : Syne (titres 700/800) + DM Mono (code/formules)
-- Couleurs thématiques : vert #6ee7b7 (définitions), violet #818cf8 (formules), rose #f472b6 (exemples)
-- Structure fidèle au cours : reprends les mêmes sections, dans le même ordre
+- Couleurs : vert #6ee7b7 (définitions), violet #818cf8 (formules), rose #f472b6 (exemples)
+- Structure fidèle au cours, mêmes sections dans le même ordre
 - Formules : \\( ... \\) inline, \\[ ... \\] en bloc
-- Cards colorées, tableaux récap, points clés mis en valeur
-- Le titre dans le <title> et le <h1> doit être exactement : "${title}"
+- Cards colorées, tableaux récap, points clés
+- <title> et <h1> = exactement "${title}"
 
-Réponds UNIQUEMENT avec le code HTML complet, sans markdown.`;
+Réponds UNIQUEMENT avec le code HTML, sans markdown.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -82,22 +104,24 @@ export async function POST(req: NextRequest) {
     userTitle = (formData.get("topic") as string) || "";
 
     if (!file) return NextResponse.json({ error: "Aucun fichier" }, { status: 400 });
-    if (file.size > 5 * 1024 * 1024) return NextResponse.json({ error: "Fichier trop grand (max 5 Mo)" }, { status: 400 });
+    if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: "Fichier trop grand (max 10 Mo)" }, { status: 400 });
 
-    const raw = await file.text();
-    const isHtml = file.name.match(/\.html?$/i) || raw.trim().startsWith("<");
-    courseText = isHtml ? stripHtml(raw) : raw;
+    try {
+      courseText = await extractTextFromFile(file);
+    } catch (e: any) {
+      return NextResponse.json({ error: `Impossible de lire le fichier : ${e.message}` }, { status: 400 });
+    }
+
+    if (!courseText.trim()) {
+      return NextResponse.json({ error: "Le fichier semble vide ou illisible. Essaie un PDF avec du texte sélectionnable (non scanné)." }, { status: 400 });
+    }
+
     hasFile = true;
 
-    // Only use filename as fallback if user gave no title
     if (!userTitle) {
-      if (isHtml) {
-        const m = raw.match(/<title[^>]*>([^<]+)<\/title>/i) || raw.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-        userTitle = m ? m[1].replace(/<[^>]+>/g, "").trim() : file.name.replace(/\.[^.]+$/, "");
-      } else {
-        userTitle = file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
-      }
+      userTitle = file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
     }
+
   } else {
     const body = await req.json();
     userTitle = body.topic || "";
@@ -114,10 +138,9 @@ export async function POST(req: NextRequest) {
     const prompt = buildPrompt(userTitle, subject, courseText, hasFile);
     let html = await callAI(prompt, apiKey);
 
-    // Clean markdown fences
     html = html.replace(/^```html\s*/i, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
 
-    // Always use the user's title — force-replace whatever the AI put
+    // Force the user's title
     if (userTitle) {
       html = html.replace(/<title[^>]*>[^<]*<\/title>/i, `<title>${userTitle}</title>`);
       html = html.replace(/<h1[^>]*>[^<]*<\/h1>/i, `<h1>${userTitle}</h1>`);
