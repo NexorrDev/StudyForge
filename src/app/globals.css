@@ -65,3 +65,60 @@ body { background: var(--bg-void); color: var(--text-primary); -webkit-font-smoo
 .flip-card-inner.flipped { transform: rotateY(180deg); }
 .flip-card-front, .flip-card-back { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 16px; }
 .flip-card-back { transform: rotateY(180deg); }
+
+/* ── Mobile overflow fix ─────────────────────────────────────────── */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Prevent any element from breaking out of the viewport */
+* {
+  min-width: 0;
+}
+
+/* Grids that would overflow on small screens */
+@media (max-width: 767px) {
+  /* Force all multi-column grids to single column */
+  [style*="grid-template-columns: repeat("] {
+    grid-template-columns: 1fr !important;
+  }
+  [style*="grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+  [style*="grid-template-columns: 2fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+  [style*="grid-template-columns: 2fr 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+  [style*="grid-template-columns: 1fr 300px"] {
+    grid-template-columns: 1fr !important;
+  }
+  [style*="grid-template-columns: 1fr 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Flex rows that wrap */
+  [style*="display:\"flex\""] {
+    flex-wrap: wrap;
+  }
+
+  /* Tables scroll horizontally instead of breaking layout */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Ensure iframes don't overflow */
+  iframe {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Recap/card boxes */
+  .flip-card {
+    max-width: 100% !important;
+  }
+}
